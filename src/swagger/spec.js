@@ -3,14 +3,254 @@ const spec = {
   openapi: '3.0.3',
   info: {
     title: 'Shop API',
-    version: '1.0.0',
+    version: '1.1.0',
     description:
-      'API documentation for Goods, Categories, and Feedbacks.\n\n' +
-      'Пагинация и фильтры соответствуют контроллерам в проекте.',
+      'API documentation for Auth, Goods, Categories, and Feedbacks.\n' +
+      'Пагинация/фильтры соответствуют текущим контроллерам. Auth — cookie-based с sessionId/accessToken/refreshToken.',
   },
-  servers: [{ url: 'http://localhost:3030', description: 'Local' }],
-  tags: [{ name: 'Goods' }, { name: 'Categories' }, { name: 'Feedbacks' }],
+  servers: [
+    { url: 'https://clothica-backend.onrender.com/', description: 'Render' },
+  ],
+  tags: [
+    { name: 'Auth' },
+    { name: 'Goods' },
+    { name: 'Categories' },
+    { name: 'Feedbacks' },
+  ],
   paths: {
+    // ===== AUTH =====
+    '/auth/register': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Register new user',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/AuthRegister' },
+              examples: {
+                register: {
+                  value: {
+                    email: 'user@example.com',
+                    password: 'P@ssw0rd!',
+                    name: 'Vlad',
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description:
+              'User created. Cookies sessionId/accessToken/refreshToken будут установлены Set-Cookie.',
+            headers: {
+              'Set-Cookie': {
+                schema: { type: 'string' },
+                description:
+                  'sessionId, accessToken, refreshToken (httpOnly). Устанавливаются в ответе.',
+              },
+            },
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UserPublic' },
+              },
+            },
+          },
+          400: {
+            description: 'Email in use / validation error',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          500: { $ref: '#/components/responses/ServerError' },
+        },
+      },
+    },
+    '/auth/login': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Login with email/password',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/AuthLogin' },
+              examples: {
+                login: {
+                  value: { email: 'user@example.com', password: 'P@ssw0rd!' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description:
+              'OK. Cookies sessionId/accessToken/refreshToken будут перезаписаны.',
+            headers: {
+              'Set-Cookie': {
+                schema: { type: 'string' },
+                description:
+                  'sessionId, accessToken, refreshToken (httpOnly). Устанавливаются в ответе.',
+              },
+            },
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UserPublic' },
+              },
+            },
+          },
+          401: {
+            description: 'User not found / Invalid credentials',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          500: { $ref: '#/components/responses/ServerError' },
+        },
+      },
+    },
+    '/auth/logout': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Logout and clear cookies',
+        responses: {
+          204: { description: 'No Content (cookies cleared)' },
+        },
+      },
+    },
+    '/auth/refresh': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Refresh session using cookies (sessionId + refreshToken)',
+        responses: {
+          200: {
+            description: 'Session refreshed (cookies re-set)',
+            headers: {
+              'Set-Cookie': {
+                schema: { type: 'string' },
+                description:
+                  'sessionId, accessToken, refreshToken (httpOnly). Устанавливаются в ответе.',
+              },
+            },
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AuthMessage' },
+                examples: { ok: { value: { message: 'Session refreshed' } } },
+              },
+            },
+          },
+          401: {
+            description: 'Session not found / token expired',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          500: { $ref: '#/components/responses/ServerError' },
+        },
+      },
+    },
+    '/auth/request-reset-email': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Send password reset link to email',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ResetEmailRequest' },
+              examples: {
+                send: { value: { email: 'user@example.com' } },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Email sent',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AuthMessage' },
+                examples: {
+                  ok: {
+                    value: {
+                      message: 'Password reset email sent successfully',
+                    },
+                  },
+                },
+              },
+            },
+          },
+          404: {
+            description: 'User not found',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          500: { $ref: '#/components/responses/ServerError' },
+        },
+      },
+    },
+    '/auth/reset-password': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Reset password with token from email',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ResetPasswordRequest' },
+              examples: {
+                reset: {
+                  value: {
+                    token: 'jwt-token-from-email',
+                    password: 'NewStrongP@ss1',
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Password reset successfully',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AuthMessage' },
+                examples: {
+                  ok: {
+                    value: {
+                      message:
+                        'Password reset successfully. Please log in again.',
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Invalid or expired token',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          404: { $ref: '#/components/responses/NotFound' },
+          500: { $ref: '#/components/responses/ServerError' },
+        },
+      },
+    },
+
     // ===== GOODS =====
     '/goods': {
       get: {
@@ -83,33 +323,6 @@ const spec = {
                     },
                   },
                 },
-                examples: {
-                  ok: {
-                    value: {
-                      page: 1,
-                      perPage: 10,
-                      totalGoods: 123,
-                      totalPages: 13,
-                      data: [
-                        {
-                          _id: '671a8a4b7f6b9a001234abcd',
-                          name: 'T-shirt',
-                          category: '671a89ff7f6b9a001234abca',
-                          image: 'https://example.com/img.jpg',
-                          price: { value: 599, currency: 'грн' },
-                          size: ['S', 'M'],
-                          description: 'Soft cotton',
-                          feedbacks: [],
-                          prevDescription: 'Old text',
-                          gender: 'unisex',
-                          characteristics: ['100% cotton'],
-                          createdAt: '2025-10-30T12:34:56.000Z',
-                          updatedAt: '2025-10-30T12:34:56.000Z',
-                        },
-                      ],
-                    },
-                  },
-                },
               },
             },
           },
@@ -118,7 +331,6 @@ const spec = {
         },
       },
     },
-
     '/goods/{goodId}': {
       get: {
         tags: ['Goods'],
@@ -182,24 +394,6 @@ const spec = {
                     },
                   },
                 },
-                examples: {
-                  ok: {
-                    value: {
-                      page: 1,
-                      perPage: 10,
-                      total: 7,
-                      totalPages: 1,
-                      data: [
-                        {
-                          _id: '671a89ff7f6b9a001234abca',
-                          name: 'T-Shirts',
-                          image: 'https://example.com/cat.jpg',
-                          goodsCount: 42,
-                        },
-                      ],
-                    },
-                  },
-                },
               },
             },
           },
@@ -251,29 +445,6 @@ const spec = {
                     },
                   },
                 },
-                examples: {
-                  ok: {
-                    value: {
-                      page: 1,
-                      perPage: 3,
-                      totalFeedbacks: 5,
-                      totalPages: 2,
-                      feedbacks: [
-                        {
-                          _id: '671aaa007f6b9a001234abcd',
-                          productId: '671a8a4b7f6b9a001234abcd',
-                          category: 'T-Shirts',
-                          author: 'Vlad',
-                          rate: 5,
-                          description: 'Top quality',
-                          date: '2025-11-05',
-                          createdAt: '2025-11-05T10:00:00.000Z',
-                          updatedAt: '2025-11-05T10:00:00.000Z',
-                        },
-                      ],
-                    },
-                  },
-                },
               },
             },
           },
@@ -281,7 +452,6 @@ const spec = {
           500: { $ref: '#/components/responses/ServerError' },
         },
       },
-
       post: {
         tags: ['Feedbacks'],
         summary: 'Create feedback',
@@ -290,18 +460,6 @@ const spec = {
           content: {
             'application/json': {
               schema: { $ref: '#/components/schemas/FeedbackCreate' },
-              examples: {
-                create: {
-                  value: {
-                    productId: '671a8a4b7f6b9a001234abcd',
-                    author: 'Vlad',
-                    rate: 4,
-                    description: 'Норм качество, быстрая доставка',
-                    // category — можно не слать (заполнится автоматически по productId)
-                    // date — можно не слать (будет YYYY-MM-DD по серверу)
-                  },
-                },
-              },
             },
           },
         },
@@ -325,19 +483,16 @@ const spec = {
   components: {
     // ====== SCHEMAS ======
     schemas: {
-      // ObjectId format hint (для UI)
       ObjectId: {
         type: 'string',
         description: 'Mongo ObjectId',
         example: '671a8a4b7f6b9a001234abcd',
       },
-
       Currency: {
         type: 'string',
         description: 'Currency code from CURRENCIES',
         example: 'грн',
       },
-
       Price: {
         type: 'object',
         properties: {
@@ -347,6 +502,54 @@ const spec = {
         required: ['value', 'currency'],
       },
 
+      // ---- Auth
+      UserPublic: {
+        type: 'object',
+        properties: {
+          _id: { $ref: '#/components/schemas/ObjectId' },
+          email: { type: 'string', format: 'email' },
+          name: { type: 'string' },
+          createdAt: { type: 'string', format: 'date-time', nullable: true },
+          updatedAt: { type: 'string', format: 'date-time', nullable: true },
+        },
+        required: ['_id', 'email', 'name'],
+      },
+      AuthRegister: {
+        type: 'object',
+        properties: {
+          email: { type: 'string', format: 'email' },
+          password: { type: 'string', minLength: 8 },
+          name: { type: 'string' },
+        },
+        required: ['email', 'password', 'name'],
+      },
+      AuthLogin: {
+        type: 'object',
+        properties: {
+          email: { type: 'string', format: 'email' },
+          password: { type: 'string' },
+        },
+        required: ['email', 'password'],
+      },
+      ResetEmailRequest: {
+        type: 'object',
+        properties: { email: { type: 'string', format: 'email' } },
+        required: ['email'],
+      },
+      ResetPasswordRequest: {
+        type: 'object',
+        properties: {
+          token: { type: 'string' },
+          password: { type: 'string', minLength: 8 },
+        },
+        required: ['token', 'password'],
+      },
+      AuthMessage: {
+        type: 'object',
+        properties: { message: { type: 'string' } },
+      },
+
+      // ---- Domain
       Good: {
         type: 'object',
         properties: {
@@ -355,10 +558,7 @@ const spec = {
           category: { $ref: '#/components/schemas/ObjectId' },
           image: { type: 'string' },
           price: { $ref: '#/components/schemas/Price' },
-          size: {
-            type: 'array',
-            items: { type: 'string' }, // enum ограничен в коде SIZES, но тут без списка
-          },
+          size: { type: 'array', items: { type: 'string' } },
           description: { type: 'string' },
           feedbacks: {
             type: 'array',
@@ -366,10 +566,7 @@ const spec = {
           },
           prevDescription: { type: 'string', nullable: true },
           gender: { type: 'string', enum: ['male', 'female', 'unisex'] },
-          characteristics: {
-            type: 'array',
-            items: { type: 'string' },
-          },
+          characteristics: { type: 'array', items: { type: 'string' } },
           createdAt: { type: 'string', format: 'date-time' },
           updatedAt: { type: 'string', format: 'date-time' },
         },
@@ -382,7 +579,6 @@ const spec = {
           'gender',
         ],
       },
-
       Category: {
         type: 'object',
         properties: {
@@ -393,7 +589,6 @@ const spec = {
         },
         required: ['name'],
       },
-
       CategorySummary: {
         type: 'object',
         description:
@@ -405,7 +600,6 @@ const spec = {
           goodsCount: { type: 'integer' },
         },
       },
-
       Feedback: {
         type: 'object',
         properties: {
@@ -425,7 +619,6 @@ const spec = {
         },
         required: ['productId', 'author', 'rate', 'description'],
       },
-
       FeedbackCreate: {
         type: 'object',
         properties: {
@@ -465,14 +658,6 @@ const spec = {
         content: {
           'application/json': {
             schema: { $ref: '#/components/schemas/Error' },
-            examples: {
-              bad: {
-                value: {
-                  status: 400,
-                  message: 'Bad Request',
-                },
-              },
-            },
           },
         },
       },
@@ -481,14 +666,6 @@ const spec = {
         content: {
           'application/json': {
             schema: { $ref: '#/components/schemas/Error' },
-            examples: {
-              notFound: {
-                value: {
-                  status: 404,
-                  message: 'Not Found',
-                },
-              },
-            },
           },
         },
       },
@@ -497,14 +674,6 @@ const spec = {
         content: {
           'application/json': {
             schema: { $ref: '#/components/schemas/Error' },
-            examples: {
-              server: {
-                value: {
-                  status: 500,
-                  message: 'Server Error',
-                },
-              },
-            },
           },
         },
       },
